@@ -4,7 +4,11 @@
 
 ## 启动
 
-需要已安装 Python 3。在项目根目录运行：
+需要已安装 Python 3。Windows 推荐直接双击项目顶层的 `start.bat`。
+
+`start.bat` 会根据自身位置定位 `src/server.py`，不依赖打开批处理文件时的当前目录；如果启动失败，窗口会保留错误信息。
+
+也可以在项目根目录手动运行：
 
 ```powershell
 python src/server.py
@@ -25,6 +29,7 @@ py -3 src/server.py
 ```text
 personal-time-tracker/
 ├── README.md
+├── start.bat
 ├── src/
 │   ├── app.js
 │   ├── index.html
@@ -77,7 +82,7 @@ data/time-entries-2026-08-17.json
 
 ## 注意
 
-- 不要直接双击 `src/index.html`；请通过 `python src/server.py` 启动，否则网页无法写入 JSON 文件。
+- 不要直接双击 `src/index.html`；请通过顶层 `start.bat` 或 `python src/server.py` 启动，否则网页无法写入 JSON 文件。
 - 服务只监听 `127.0.0.1`，其他电脑无法访问。
 - 不要在工具运行时手动编辑正在使用的数据文件。
 
