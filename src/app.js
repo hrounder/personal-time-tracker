@@ -33,6 +33,8 @@
     confettiEnabled: false,
     entryCopyDrag: null,
     suppressEntryClickUntil: 0,
+    categoryReorderDrag: null,
+    suppressCategoryClickUntil: 0,
   };
 
   async function api(path, options) {
@@ -220,6 +222,13 @@
       const existingEnd = timeToSlot(entry.endTime);
       return startSlot < existingEnd && endSlot > existingStart;
     });
+  }
+
+  function reorderedCategories(categories, fromIndex, toIndex) {
+    const reordered = [...categories];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    return reordered;
   }
 
   function renderStats() {
@@ -749,11 +758,148 @@
   }
 
   function renderCategories() {
-    $("#category-list").innerHTML = state.categories.map((item) => `<button class="category-chip ${state.editingCategory === item.name ? "is-editing" : ""}" type="button" data-category="${escapeHtml(item.name)}" title="编辑分类"><i style="background:${item.color}"></i><span>${escapeHtml(item.name)}</span><b aria-hidden="true">编辑</b></button>`).join("");
+    $("#category-list").innerHTML = state.categories.map((item) => `<button class="category-chip ${state.editingCategory === item.name ? "is-editing" : ""}" type="button" data-category="${escapeHtml(item.name)}" title="单击编辑 · 拖动排序"><i style="background:${item.color}"></i><span>${escapeHtml(item.name)}</span><b aria-hidden="true">编辑</b></button>`).join("");
     $("#category-list").querySelectorAll(".category-chip").forEach((button) => {
-      button.addEventListener("click", () => editCategory(button.dataset.category));
+      button.addEventListener("pointerdown", beginCategoryReorder);
+      button.addEventListener("click", (event) => {
+        if (Date.now() < state.suppressCategoryClickUntil) {
+          event.preventDefault();
+          return;
+        }
+        editCategory(button.dataset.category);
+      });
     });
     renderSwatches();
+  }
+
+  function beginCategoryReorder(event) {
+    if (event.button !== 0 || state.categoryReorderDrag) return;
+    const fromIndex = state.categories.findIndex((category) => category.name === event.currentTarget.dataset.category);
+    if (fromIndex < 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    state.categoryReorderDrag = {
+      pointerId: event.pointerId,
+      sourceElement: event.currentTarget,
+      listElement: $("#category-list"),
+      fromIndex,
+      startX: event.clientX,
+      startY: event.clientY,
+      latestX: event.clientX,
+      latestY: event.clientY,
+      sourceRect: rect,
+      dragging: false,
+      frame: 0,
+      ghost: null,
+      placeholder: null,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function startCategoryReorder(drag) {
+    drag.dragging = true;
+    state.suppressCategoryClickUntil = Date.now() + 1000;
+    document.body.classList.add("category-reordering");
+
+    const ghost = drag.sourceElement.cloneNode(true);
+    ghost.classList.add("category-reorder-ghost");
+    ghost.removeAttribute("data-category");
+    ghost.removeAttribute("title");
+    ghost.style.left = `${drag.sourceRect.left}px`;
+    ghost.style.top = `${drag.sourceRect.top}px`;
+    ghost.style.width = `${drag.sourceRect.width}px`;
+    ghost.querySelector("b").textContent = "排序";
+    document.body.appendChild(ghost);
+    drag.ghost = ghost;
+
+    const placeholder = document.createElement("span");
+    placeholder.className = "category-reorder-placeholder";
+    placeholder.style.width = `${drag.sourceRect.width}px`;
+    drag.sourceElement.before(placeholder);
+    drag.sourceElement.classList.add("is-reorder-source");
+    drag.placeholder = placeholder;
+  }
+
+  function updateCategoryReorderPosition(drag) {
+    drag.frame = 0;
+    if (!drag.dragging) return;
+    drag.ghost.style.transform = `translate3d(${drag.latestX - drag.startX}px, ${drag.latestY - drag.startY}px, 0)`;
+
+    const hit = document.elementFromPoint(drag.latestX, drag.latestY);
+    if (!hit || hit.closest("#category-list") !== drag.listElement) return;
+    const candidates = [...drag.listElement.querySelectorAll(".category-chip")]
+      .filter((element) => element !== drag.sourceElement);
+    const insertionTarget = candidates.find((element) => {
+      const rect = element.getBoundingClientRect();
+      if (drag.latestY < rect.top) return true;
+      const onSameRow = drag.latestY >= rect.top && drag.latestY <= rect.bottom;
+      return onSameRow && drag.latestX < rect.left + rect.width / 2;
+    });
+    drag.listElement.insertBefore(drag.placeholder, insertionTarget || null);
+  }
+
+  function moveCategoryReorder(event) {
+    const drag = state.categoryReorderDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    drag.latestX = event.clientX;
+    drag.latestY = event.clientY;
+    if (!drag.dragging) {
+      if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) return;
+      startCategoryReorder(drag);
+    }
+    event.preventDefault();
+    if (!drag.frame) drag.frame = requestAnimationFrame(() => updateCategoryReorderPosition(drag));
+  }
+
+  function clearCategoryReorder(drag) {
+    if (drag.frame) cancelAnimationFrame(drag.frame);
+    drag.ghost?.remove();
+    drag.placeholder?.remove();
+    drag.sourceElement.classList.remove("is-reorder-source");
+    document.body.classList.remove("category-reordering");
+    try { drag.sourceElement.releasePointerCapture?.(drag.pointerId); } catch { /* Pointer capture may already be released. */ }
+    state.categoryReorderDrag = null;
+  }
+
+  async function finishCategoryReorder(event) {
+    const drag = state.categoryReorderDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag.dragging) {
+      clearCategoryReorder(drag);
+      return;
+    }
+
+    event.preventDefault();
+    drag.latestX = event.clientX;
+    drag.latestY = event.clientY;
+    if (drag.frame) cancelAnimationFrame(drag.frame);
+    updateCategoryReorderPosition(drag);
+    const orderedElements = [...drag.listElement.children].filter((element) =>
+      element !== drag.sourceElement && (element === drag.placeholder || element.classList.contains("category-chip"))
+    );
+    const toIndex = orderedElements.indexOf(drag.placeholder);
+    state.suppressCategoryClickUntil = Date.now() + 500;
+    clearCategoryReorder(drag);
+    if (toIndex < 0 || toIndex === drag.fromIndex) return;
+
+    const previousCategories = state.categories;
+    state.categories = reorderedCategories(state.categories, drag.fromIndex, toIndex);
+    renderCategories();
+    renderSheet();
+    try {
+      await saveCategories();
+    } catch (error) {
+      state.categories = previousCategories;
+      renderCategories();
+      renderSheet();
+      toast(error.message);
+    }
+  }
+
+  function cancelCategoryReorder(event) {
+    const drag = state.categoryReorderDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.dragging) state.suppressCategoryClickUntil = Date.now() + 500;
+    clearCategoryReorder(drag);
   }
 
   function renderSwatches() {
@@ -900,6 +1046,9 @@
   document.addEventListener("pointermove", moveEntryCopy);
   document.addEventListener("pointerup", finishEntryCopy);
   document.addEventListener("pointercancel", cancelEntryCopy);
+  document.addEventListener("pointermove", moveCategoryReorder);
+  document.addEventListener("pointerup", finishCategoryReorder);
+  document.addEventListener("pointercancel", cancelCategoryReorder);
   document.addEventListener("pointermove", extendSelection);
   document.addEventListener("pointerup", finishSelection);
 

@@ -113,11 +113,16 @@ body.entry-copying, body.entry-copying * { cursor: copy !important; }
 .section-copy p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.7; }
 .category-content { padding-top: 3px; }
 .category-list { min-height: 43px; display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 24px; }
-.category-chip { height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 18px; background: #fafbfa; font-size: 13px; cursor: pointer; }
+.category-chip { height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border: 1px solid var(--line-strong); border-radius: 18px; background: #fafbfa; font-size: 13px; cursor: pointer; touch-action: none; }
 .category-chip i { width: 12px; height: 12px; border: 1px solid rgba(24,32,29,.12); border-radius: 50%; }
 .category-chip b { color: var(--muted); font-size: 10px; font-weight: 400; opacity: 0; }
 .category-chip:hover b, .category-chip.is-editing b { opacity: 1; }
 .category-chip:hover, .category-chip.is-editing { border-color: #7d8c84; background: white; }
+.category-chip.is-reorder-source { position: fixed; left: -9999px; visibility: hidden; pointer-events: none; }
+.category-reorder-placeholder { flex: 0 0 auto; height: 34px; border: 1px dashed rgba(31,107,80,.55); border-radius: 18px; background: rgba(228,240,235,.6); box-shadow: inset 0 0 0 2px rgba(31,107,80,.05); }
+.category-reorder-ghost { position: fixed; z-index: 80; margin: 0; pointer-events: none; opacity: .94; box-shadow: 0 9px 24px rgba(24,32,29,.2); will-change: transform; }
+.category-reorder-ghost b { color: var(--accent); opacity: 1; }
+body.category-reordering, body.category-reordering * { cursor: grabbing !important; }
 .category-form { display: grid; grid-template-columns: minmax(180px, 1fr) 300px 135px; align-items: end; gap: 20px; padding: 20px; border: 1px solid var(--line-strong); border-radius: 10px; background: #fafbfa; }
 .category-form label, .popover label { display: grid; gap: 7px; color: #48534d; font-size: 12px; font-weight: 700; }
 .category-form input, .popover input, .popover select, .popover textarea { width: 100%; border: 1px solid var(--line-strong); border-radius: 7px; outline: none; background: white; }
