@@ -31,6 +31,8 @@
     editingCategory: null,
     selectedCategoryColor: BASE_COLORS[0],
     confettiEnabled: false,
+    entryCopyDrag: null,
+    suppressEntryClickUntil: 0,
   };
 
   async function api(path, options) {
@@ -133,8 +135,14 @@
     const element = $("#toast");
     element.textContent = message;
     element.hidden = false;
-    clearTimeout(toast.timer);
-    toast.timer = setTimeout(() => { element.hidden = true; }, 2400);
+    element.classList.remove("is-leaving");
+    clearTimeout(toast.fadeTimer);
+    clearTimeout(toast.hideTimer);
+    toast.fadeTimer = setTimeout(() => { element.classList.add("is-leaving"); }, 2000);
+    toast.hideTimer = setTimeout(() => {
+      element.hidden = true;
+      element.classList.remove("is-leaving");
+    }, 2350);
   }
 
   function clearSelectionCelebration() {
@@ -192,6 +200,26 @@
   function entryActualMinutes(entry) {
     const baseMinutes = Math.max(timeToSlot(entry.endTime) - timeToSlot(entry.startTime), 0) * 30;
     return Math.max(baseMinutes + (Number(entry.timeAdjustment) || 0), 0);
+  }
+
+  function createCopiedEntry(sourceEntry, date, startSlot) {
+    const slotCount = Math.max(timeToSlot(sourceEntry.endTime) - timeToSlot(sourceEntry.startTime), 1);
+    return {
+      ...sourceEntry,
+      id: `${date.replaceAll("-", "")}-${String(Date.now()).slice(-6)}-${Math.random().toString(36).slice(2, 6)}`,
+      date,
+      startTime: slotToTime(startSlot),
+      endTime: slotToTime(startSlot + slotCount),
+    };
+  }
+
+  function hasTimeConflict(date, startSlot, endSlot) {
+    return state.entries.some((entry) => {
+      if (entry.date !== date) return false;
+      const existingStart = timeToSlot(entry.startTime);
+      const existingEnd = timeToSlot(entry.endTime);
+      return startSlot < existingEnd && endSlot > existingStart;
+    });
   }
 
   function renderStats() {
@@ -293,7 +321,7 @@
         const timeLabel = entryTimeLabel(entry.startTime, entry.endTime, slotCount);
         const adjustment = slotCount >= 2 && entry.timeAdjustment ? `<em>${entry.timeAdjustment > 0 ? "+" : ""}${entry.timeAdjustment} 分钟</em>` : "";
         const entryDescription = `${entry.activity} · ${entry.startTime}–${entry.endTime} · ${entry.category}`;
-        html += `<article class="entry-block ${slotCount === 1 ? "is-single-slot" : "is-multi-slot"}" data-entry-id="${escapeHtml(entry.id)}" role="button" tabindex="0" aria-label="编辑记录：${escapeHtml(entryDescription)}" style="top:${start * SLOT_HEIGHT + 1}px;height:${Math.max(slotCount * SLOT_HEIGHT - 2, 28)}px;background-color:${categoryColor(entry.category)}" title="单击编辑 · ${escapeHtml(entryDescription)}"><strong>${escapeHtml(entry.activity)}</strong>${timeLabel ? `<span>${timeLabel}</span>` : ""}${adjustment}</article>`;
+        html += `<article class="entry-block ${slotCount === 1 ? "is-single-slot" : "is-multi-slot"}" data-entry-id="${escapeHtml(entry.id)}" role="button" tabindex="0" aria-label="编辑记录：${escapeHtml(entryDescription)}" style="top:${start * SLOT_HEIGHT + 1}px;height:${Math.max(slotCount * SLOT_HEIGHT - 2, 28)}px;background-color:${categoryColor(entry.category)}" title="单击编辑 · 拖动复制 · ${escapeHtml(entryDescription)}"><strong>${escapeHtml(entry.activity)}</strong>${timeLabel ? `<span>${timeLabel}</span>` : ""}${adjustment}</article>`;
       });
       html += "</div>";
     });
@@ -304,9 +332,11 @@
       slot.addEventListener("pointerdown", beginSelection);
     });
     sheet.querySelectorAll(".entry-block").forEach((block) => {
+      block.addEventListener("pointerdown", beginEntryCopy);
       block.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
+        if (Date.now() < state.suppressEntryClickUntil) return;
         openEntryEditor(block.dataset.entryId, event);
       });
       block.addEventListener("keydown", (event) => {
@@ -368,6 +398,170 @@
     $("#open-overview").focus();
   }
 
+  function clamp(value, minimum, maximum) {
+    return Math.min(Math.max(value, minimum), maximum);
+  }
+
+  function beginEntryCopy(event) {
+    if (event.button !== 0 || state.entryCopyDrag) return;
+    const entry = state.entries.find((item) => item.id === event.currentTarget.dataset.entryId);
+    if (!entry) return;
+
+    const slotCount = Math.max(timeToSlot(entry.endTime) - timeToSlot(entry.startTime), 1);
+    const rect = event.currentTarget.getBoundingClientRect();
+    const slotHeight = rect.height / slotCount;
+    state.entryCopyDrag = {
+      pointerId: event.pointerId,
+      entry,
+      sourceElement: event.currentTarget,
+      startX: event.clientX,
+      startY: event.clientY,
+      latestX: event.clientX,
+      latestY: event.clientY,
+      grabSlotOffset: clamp(Math.floor((event.clientY - rect.top) / slotHeight), 0, slotCount - 1),
+      slotCount,
+      weekDates: getDays().map(isoDate),
+      sourceRect: rect,
+      dragging: false,
+      frame: 0,
+      ghost: null,
+      preview: null,
+      target: null,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.stopPropagation();
+  }
+
+  function startEntryCopy(drag) {
+    drag.dragging = true;
+    state.suppressEntryClickUntil = Date.now() + 1000;
+    closeEntry(false);
+    state.selection = null;
+    updateSelectionHighlight();
+    document.body.classList.add("entry-copying");
+    drag.sourceElement.classList.add("is-copy-source");
+
+    const ghost = drag.sourceElement.cloneNode(true);
+    ghost.classList.add("entry-copy-ghost");
+    ghost.removeAttribute("data-entry-id");
+    ghost.removeAttribute("role");
+    ghost.removeAttribute("tabindex");
+    ghost.removeAttribute("title");
+    ghost.style.left = `${drag.sourceRect.left}px`;
+    ghost.style.top = `${drag.sourceRect.top}px`;
+    ghost.style.right = "auto";
+    ghost.style.width = `${drag.sourceRect.width}px`;
+    ghost.style.height = `${drag.sourceRect.height}px`;
+    const badge = document.createElement("b");
+    badge.className = "entry-copy-badge";
+    badge.textContent = "复制";
+    ghost.appendChild(badge);
+    document.body.appendChild(ghost);
+    drag.ghost = ghost;
+
+    const preview = document.createElement("article");
+    preview.className = "entry-copy-preview";
+    preview.style.height = `${Math.max(drag.slotCount * SLOT_HEIGHT - 2, 28)}px`;
+    preview.style.backgroundColor = categoryColor(drag.entry.category);
+    preview.innerHTML = `<strong>${escapeHtml(drag.entry.activity)}</strong>`;
+    preview.hidden = true;
+    drag.preview = preview;
+  }
+
+  function updateEntryCopyPosition(drag) {
+    drag.frame = 0;
+    if (!drag.dragging) return;
+
+    drag.ghost.style.transform = `translate3d(${drag.latestX - drag.startX}px, ${drag.latestY - drag.startY}px, 0)`;
+    const targetElement = document.elementFromPoint(drag.latestX, drag.latestY);
+    const column = targetElement?.closest(".day-column");
+    if (!column) {
+      drag.target = null;
+      drag.preview.hidden = true;
+      return;
+    }
+
+    const columnRect = column.getBoundingClientRect();
+    const slotHeight = columnRect.height / SLOT_COUNT;
+    const cursorSlot = clamp(Math.floor((drag.latestY - columnRect.top) / slotHeight), 0, SLOT_COUNT - 1);
+    const start = clamp(cursorSlot - drag.grabSlotOffset, 0, SLOT_COUNT - drag.slotCount);
+    const day = Number(column.dataset.day);
+    const date = drag.weekDates[day];
+    const conflict = hasTimeConflict(date, start, start + drag.slotCount);
+    drag.target = { day, date, start, conflict };
+    drag.preview.style.top = `${start * SLOT_HEIGHT + 1}px`;
+    drag.preview.classList.toggle("is-conflict", conflict);
+    drag.preview.hidden = false;
+    if (drag.preview.parentElement !== column) column.appendChild(drag.preview);
+  }
+
+  function moveEntryCopy(event) {
+    const drag = state.entryCopyDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    drag.latestX = event.clientX;
+    drag.latestY = event.clientY;
+
+    if (!drag.dragging) {
+      const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+      if (distance < 6) return;
+      startEntryCopy(drag);
+    }
+
+    event.preventDefault();
+    if (!drag.frame) drag.frame = requestAnimationFrame(() => updateEntryCopyPosition(drag));
+  }
+
+  function clearEntryCopyDrag(drag) {
+    if (drag.frame) cancelAnimationFrame(drag.frame);
+    drag.ghost?.remove();
+    drag.preview?.remove();
+    drag.sourceElement.classList.remove("is-copy-source");
+    document.body.classList.remove("entry-copying");
+    try { drag.sourceElement.releasePointerCapture?.(drag.pointerId); } catch { /* Pointer capture may already be released. */ }
+    state.entryCopyDrag = null;
+  }
+
+  async function finishEntryCopy(event) {
+    const drag = state.entryCopyDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag.dragging) {
+      clearEntryCopyDrag(drag);
+      return;
+    }
+
+    event.preventDefault();
+    drag.latestX = event.clientX;
+    drag.latestY = event.clientY;
+    if (drag.frame) cancelAnimationFrame(drag.frame);
+    updateEntryCopyPosition(drag);
+    const target = drag.target;
+    const sourceEntry = drag.entry;
+    state.suppressEntryClickUntil = Date.now() + 500;
+    clearEntryCopyDrag(drag);
+    if (!target) return;
+    if (target.conflict || hasTimeConflict(target.date, target.start, target.start + drag.slotCount)) {
+      toast("该时间段已被占用");
+      return;
+    }
+
+    const copiedEntry = createCopiedEntry(sourceEntry, target.date, target.start);
+    state.entries.push(copiedEntry);
+    try {
+      await saveWeek();
+      renderSheet();
+    } catch (error) {
+      state.entries = state.entries.filter((entry) => entry.id !== copiedEntry.id);
+      toast(error.message);
+    }
+  }
+
+  function cancelEntryCopy(event) {
+    const drag = state.entryCopyDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (drag.dragging) state.suppressEntryClickUntil = Date.now() + 500;
+    clearEntryCopyDrag(drag);
+  }
+
   function beginSelection(event) {
     event.preventDefault();
     const day = Number(event.currentTarget.dataset.day);
@@ -406,6 +600,13 @@
     const popover = $("#entry-popover");
     const days = getDays();
     const selection = state.selection;
+    const date = isoDate(days[selection.day]);
+    if (hasTimeConflict(date, selection.start, selection.end + 1)) {
+      state.selection = null;
+      updateSelectionHighlight();
+      toast("该时间段已被占用");
+      return;
+    }
     $("#entry-date").textContent = `${dateLabel(days[selection.day])} · ${WEEKDAYS[selection.day]}`;
     $("#entry-title").textContent = `${slotToTime(selection.start)} — ${slotToTime(selection.end + 1)}`;
     $("#activity").value = "";
@@ -413,7 +614,7 @@
     $("#adjustment").value = "0";
     $("#note").value = "";
     renderEntryCategories();
-    applySleepActivityDefault();
+    applyCategoryActivityDefault(true);
     state.editingEntryId = null;
     $("#delete-entry").hidden = true;
     $("#save-entry").textContent = "保存记录";
@@ -481,16 +682,12 @@
     $("#entry-category").innerHTML = state.categories.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`).join("");
   }
 
-  function applySleepActivityDefault() {
+  function applyCategoryActivityDefault(force = false) {
     const activity = $("#activity");
-    const isSleepCategory = $("#entry-category").value === "睡觉";
-    if (isSleepCategory && !activity.value.trim()) {
-      activity.value = "睡觉";
-      state.activityAutoFilled = true;
-    } else if (!isSleepCategory && state.activityAutoFilled) {
-      activity.value = "";
-      state.activityAutoFilled = false;
-    }
+    const category = $("#entry-category").value;
+    if (!category || (!force && !state.activityAutoFilled)) return;
+    activity.value = category;
+    state.activityAutoFilled = true;
   }
 
   function updateActualDuration() {
@@ -511,6 +708,10 @@
       : -1;
     const originalEntry = editingIndex >= 0 ? state.entries[editingIndex] : null;
     const date = originalEntry?.date || isoDate(getDays()[state.selection.day]);
+    if (editingIndex < 0 && hasTimeConflict(date, state.selection.start, state.selection.end + 1)) {
+      toast("该时间段已被占用");
+      return;
+    }
     const updatedEntry = {
       id: originalEntry?.id || `${date.replaceAll("-", "")}-${String(Date.now()).slice(-6)}`,
       date,
@@ -525,7 +726,6 @@
     else state.entries.push(updatedEntry);
     try {
       await saveWeek();
-      toast(editingIndex >= 0 ? `已更新：${activity}` : `已记录：${activity}`);
       closeEntry();
     } catch (error) {
       if (editingIndex >= 0) state.entries[editingIndex] = originalEntry;
@@ -538,11 +738,9 @@
     const entryIndex = state.entries.findIndex((entry) => entry.id === state.editingEntryId);
     if (entryIndex < 0) return;
     const entry = state.entries[entryIndex];
-    if (!window.confirm(`确定删除“${entry.activity}”吗？删除后无法在工具内撤销。`)) return;
     state.entries.splice(entryIndex, 1);
     try {
       await saveWeek();
-      toast(`已删除：${entry.activity}`);
       closeEntry();
     } catch (error) {
       state.entries.splice(entryIndex, 0, entry);
@@ -685,7 +883,7 @@
   $("#delete-entry").addEventListener("click", deleteEntry);
   $("#entry-form").addEventListener("submit", saveEntry);
   $("#activity").addEventListener("input", () => { state.activityAutoFilled = false; });
-  $("#entry-category").addEventListener("change", applySleepActivityDefault);
+  $("#entry-category").addEventListener("change", () => applyCategoryActivityDefault());
   $("#adjustment").addEventListener("input", updateActualDuration);
   $("#minus-adjustment").addEventListener("click", () => { $("#adjustment").value = String((Number($("#adjustment").value) || 0) - 5); updateActualDuration(); });
   $("#plus-adjustment").addEventListener("click", () => { $("#adjustment").value = String((Number($("#adjustment").value) || 0) + 5); updateActualDuration(); });
@@ -699,6 +897,9 @@
   $("#close-overview").addEventListener("click", closeOverview);
   $("#overview-modal").addEventListener("click", (event) => { if (event.target === event.currentTarget) closeOverview(); });
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !$("#overview-modal").hidden) closeOverview(); });
+  document.addEventListener("pointermove", moveEntryCopy);
+  document.addEventListener("pointerup", finishEntryCopy);
+  document.addEventListener("pointercancel", cancelEntryCopy);
   document.addEventListener("pointermove", extendSelection);
   document.addEventListener("pointerup", finishSelection);
 
