@@ -1,0 +1,15 @@
+# Personal runtime data
+data/
+config/
+backups/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Local packages and editor files
+*.zip
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

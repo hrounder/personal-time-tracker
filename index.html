@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>时间记录｜个人周时间表</title>
+  <meta name="description" content="在 Excel 式周时间表中拖选并记录你的时间。">
+  <link rel="stylesheet" href="style.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">◫</span>
+        <div><h1>时间记录</h1><p>拖动方块，记录时间</p></div>
+      </div>
+      <div class="week-controls" aria-label="周视图切换">
+        <button class="icon-button" id="prev-week" type="button" aria-label="上一周">‹</button>
+        <button class="today-button" id="this-week" type="button">本周</button>
+        <button class="icon-button" id="next-week" type="button" aria-label="下一周">›</button>
+        <strong id="week-label"></strong>
+        <label class="effect-toggle">
+          <span>彩带特效</span>
+          <input id="confetti-toggle" type="checkbox">
+          <span class="effect-toggle-track" aria-hidden="true"></span>
+        </label>
+        <a class="export-button" id="export-data" href="/api/export" download>导出数据</a>
+        <button class="overview-button" id="open-overview" type="button">整体情况</button>
+      </div>
+    </header>
+
+    <div class="toast" id="toast" role="status" hidden></div>
+
+    <section class="sheet-wrap" aria-label="周时间表">
+      <div class="sheet" id="sheet"></div>
+    </section>
+
+    <section class="stats-section" aria-labelledby="stats-title">
+      <div class="stats-heading">
+        <div>
+          <h2 id="stats-title">本周统计</h2>
+          <p id="stats-summary"></p>
+        </div>
+      </div>
+      <div class="stats-chart" id="stats-chart" aria-live="polite"></div>
+    </section>
+
+    <section class="category-section">
+      <div class="section-copy">
+        <h2>分类设置</h2>
+        <p>点击已有分类可以修改名称或颜色。</p>
+      </div>
+      <div class="category-content">
+        <div class="category-list" id="category-list" aria-label="已有分类"></div>
+        <form class="category-form" id="category-form">
+          <label><span id="category-name-label">新分类</span><input id="category-name" placeholder="例如：运动" maxlength="16"></label>
+          <fieldset>
+            <legend>选择颜色</legend>
+            <div class="swatches" id="swatches"></div>
+          </fieldset>
+          <div class="category-actions">
+            <button class="category-cancel-button" id="cancel-category" type="button" hidden>取消</button>
+            <button class="add-button" id="save-category" type="submit" disabled>添加分类</button>
+          </div>
+          <div class="custom-color-row" id="custom-color-row" hidden>
+            <label>颜色代码<input id="custom-color" value="#" placeholder="#A1B2C3" maxlength="7"></label>
+            <button id="add-custom-color" type="button">加入颜色</button>
+            <small id="color-error" role="alert"></small>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <footer><span>数据保存在本地 config 和 data 文件夹</span></footer>
+  </main>
+
+  <div class="popover" id="entry-popover" role="dialog" aria-modal="true" aria-labelledby="entry-title" hidden>
+    <div class="popover-head">
+      <div><span id="entry-date"></span><h2 id="entry-title"></h2></div>
+      <button id="close-entry" type="button" aria-label="关闭">×</button>
+    </div>
+    <form id="entry-form">
+      <label>事项<input id="activity" placeholder="这段时间做了什么？" maxlength="40" required></label>
+      <label>分类<select id="entry-category" required></select></label>
+      <div class="adjust-row">
+        <div><label for="adjustment">伤停补时</label><small id="actual-duration"></small></div>
+        <div class="stepper">
+          <button id="minus-adjustment" type="button">−</button>
+          <input id="adjustment" type="number" value="0">
+          <button id="plus-adjustment" type="button">＋</button>
+        </div>
+      </div>
+      <label>备注<textarea id="note" placeholder="可选" rows="3" maxlength="200"></textarea></label>
+      <div class="form-actions">
+        <button class="delete-button" id="delete-entry" type="button" hidden>删除</button>
+        <button class="cancel-button" id="cancel-entry" type="button">取消</button>
+        <button class="save-button" id="save-entry" type="submit">保存记录</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="overview-overlay" id="overview-modal" role="dialog" aria-modal="true" aria-label="整体情况" hidden>
+    <section class="overview-panel">
+      <button class="overview-close" id="close-overview" type="button" aria-label="关闭整体情况">×</button>
+      <div class="overview-grid" id="overview-grid"></div>
+    </section>
+  </div>
+</body>
+</html>
