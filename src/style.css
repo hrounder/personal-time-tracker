@@ -72,6 +72,21 @@ main { min-width: 1080px; min-height: 100vh; }
 .entry-block.is-single-slot { display: flex; align-items: center; padding-top: 2px; padding-bottom: 2px; }
 .entry-block.is-single-slot strong { width: 100%; line-height: 1.15; }
 
+.daily-stats { grid-column: 1 / -1; display: grid; grid-template-columns: 72px repeat(7, minmax(140px, 1fr)); border-top: 2px solid #aebbb4; background: #f8faf8; }
+.daily-stats-corner, .daily-stats-day { min-height: 42px; display: flex; align-items: center; justify-content: center; border-right: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong); background: #eef2ef; }
+.daily-stats-corner { padding: 0 6px; color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-align: center; }
+.daily-stats-day { gap: 6px; color: var(--muted); font-size: 10px; }
+.daily-stats-day strong { color: var(--ink); font-size: 11px; }
+.daily-stats-day.is-today { color: var(--accent); background: #e7f1ec; box-shadow: inset 0 3px var(--accent); }
+.daily-category-label, .daily-stat-value { min-height: 42px; border-right: 1px solid var(--line-strong); border-bottom: 1px solid var(--line); }
+.daily-category-label { min-width: 0; display: flex; align-items: center; gap: 5px; padding: 7px 6px; background: #f3f6f4; font-size: 10px; font-weight: 700; }
+.daily-category-label i { flex: 0 0 auto; width: 9px; height: 9px; border: 1px solid rgba(24,32,29,.12); border-radius: 50%; }
+.daily-category-label span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.daily-stat-value { display: grid; place-items: center; padding: 5px; background: #fbfcfb; color: #38453f; font-size: 11px; font-weight: 700; text-align: center; }
+.daily-stat-value.is-empty { color: #a3aca7; font-weight: 400; }
+.daily-stat-value.is-today { background: rgba(228,240,235,.55); }
+.daily-stat-value.has-time { box-shadow: inset 0 -2px rgba(31,107,80,.08); }
+
 .stats-section { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 58px; padding: 44px 64px 46px; background: #f8faf8; border-bottom: 1px solid var(--line-strong); }
 .stats-heading h2 { margin: 0 0 8px; font-family: Georgia, "Songti SC", serif; font-size: 27px; font-weight: 500; }
 .stats-heading p { margin: 0; color: var(--muted); font-size: 13px; }

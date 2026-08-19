@@ -227,6 +227,39 @@
     }).join("");
   }
 
+  function renderDailyStats(days) {
+    const today = isoDate(new Date());
+    const dayIndexes = new Map(days.map((date, index) => [isoDate(date), index]));
+    const totals = new Map(state.categories.map((category) => [category.name, Array(7).fill(0)]));
+
+    state.entries.forEach((entry) => {
+      const dayIndex = dayIndexes.get(entry.date);
+      const categoryTotals = totals.get(entry.category);
+      if (dayIndex === undefined || !categoryTotals) return;
+      categoryTotals[dayIndex] += entryActualMinutes(entry);
+    });
+
+    let html = '<div class="daily-stats" role="table" aria-label="每日分类统计">';
+    html += '<div class="daily-stats-corner" role="columnheader">每日统计</div>';
+    days.forEach((date, day) => {
+      const dateString = isoDate(date);
+      html += `<div class="daily-stats-day ${dateString === today ? "is-today" : ""}" role="columnheader"><span>${WEEKDAYS[day]}</span><strong>${pad(date.getMonth() + 1)}/${pad(date.getDate())}</strong></div>`;
+    });
+
+    state.categories.forEach((category) => {
+      const categoryTotals = totals.get(category.name);
+      html += `<div class="daily-category-label" role="rowheader" title="${escapeHtml(category.name)}"><i style="background:${category.color}"></i><span>${escapeHtml(category.name)}</span></div>`;
+      days.forEach((date, day) => {
+        const minutes = categoryTotals[day];
+        const dateString = isoDate(date);
+        html += `<div class="daily-stat-value ${dateString === today ? "is-today" : ""} ${minutes ? "has-time" : "is-empty"}" role="cell" aria-label="${escapeHtml(category.name)}，${WEEKDAYS[day]}：${durationLabel(minutes)}">${minutes ? durationLabel(minutes) : "—"}</div>`;
+      });
+    });
+
+    html += "</div>";
+    return html;
+  }
+
   function renderSheet() {
     const sheet = $("#sheet");
     const days = getDays();
@@ -264,6 +297,7 @@
       });
       html += "</div>";
     });
+    html += renderDailyStats(days);
     sheet.innerHTML = html;
 
     sheet.querySelectorAll(".slot").forEach((slot) => {
