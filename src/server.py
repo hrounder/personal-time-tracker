@@ -16,9 +16,10 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 
-ROOT = Path(__file__).resolve().parent
-DATA_DIR = ROOT / "data"
-CONFIG_DIR = ROOT / "config"
+WEB_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = WEB_DIR.parent
+DATA_DIR = PROJECT_ROOT / "data"
+CONFIG_DIR = PROJECT_ROOT / "config"
 CATEGORIES_FILE = CONFIG_DIR / "categories.json"
 PREFERENCES_FILE = CONFIG_DIR / "preferences.json"
 LEGACY_CATEGORIES_FILE = DATA_DIR / "categories.json"
@@ -224,7 +225,7 @@ def build_export() -> dict:
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(ROOT), **kwargs)
+        super().__init__(*args, directory=str(WEB_DIR), **kwargs)
 
     def log_message(self, format: str, *args: object) -> None:
         return
@@ -325,8 +326,8 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def main() -> None:
-    DATA_DIR.mkdir(exist_ok=True)
-    CONFIG_DIR.mkdir(exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     if not CATEGORIES_FILE.exists():
         if LEGACY_CATEGORIES_FILE.exists():
             shutil.copy2(LEGACY_CATEGORIES_FILE, CATEGORIES_FILE)
