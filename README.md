@@ -4,7 +4,7 @@
 
 ## 启动
 
-需要已安装 Python 3。Windows 推荐直接双击项目顶层的 `start.bat`。
+需要已安装 Python 3。Windows 推荐直接双击项目顶层的 `start.bat`。将'start.bat'复制到桌面无法正常启动，可以通过 `右键-发送到-桌面快捷方式`，将启动程序移动到桌面以便于打开
 
 `start.bat` 会根据自身位置定位 `src/server.py`，不依赖打开批处理文件时的当前目录；如果启动失败，窗口会保留错误信息。
 
@@ -13,14 +13,6 @@
 ```powershell
 python src/server.py
 ```
-
-Windows 也可以使用：
-
-```powershell
-py -3 src/server.py
-```
-
-服务启动后会自动尝试打开浏览器。如果没有自动打开，请复制终端显示的地址；通常是 `http://127.0.0.1:8765/`。
 
 不需要 `npm install`，不需要安装任何 Python 第三方库，也不需要联网。
 
