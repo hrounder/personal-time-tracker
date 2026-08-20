@@ -29,6 +29,8 @@ personal-time-tracker/
 │   ├── index.html
 │   ├── server.py
 │   └── style.css
+├── tool/
+│   └── weekly-summary/  # 将每周时间块记录整理为按日期汇总的 JSON
 ├── config/  # 首次运行时自动创建，不提交到 Git
 └── data/    # 首次运行时自动创建，不提交到 Git
 ```
@@ -73,6 +75,16 @@ data/time-entries-2026-08-17.json
 ```
 
 如需完整备份，请同时复制 config 和 data 两个文件夹。
+
+## 数据整理工具
+
+项目提供了一个无需第三方依赖的每周汇总工具。每个有记录的星期生成一个文件，文件内按日期和分类整理记录，并合并同一分类下名称相同的事项：
+
+```powershell
+python tool/weekly-summary/summarize_by_week.py
+```
+
+结果保存在 `data/weekly-summary/`。具体格式和参数见 [`tool/weekly-summary/README.md`](tool/weekly-summary/README.md)。
 
 ## 注意
 
