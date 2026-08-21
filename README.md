@@ -1,98 +1,68 @@
-# 个人时间记录工具（本地文件版）
+# 个人时间记录工具
 
-一个面向个人使用的本地周时间记录工具。通过 Excel 式时间表拖选半小时单元格，快速创建、编辑和统计时间记录。
+> 【置顶】2026.8.20：我们发布了这个工具的软件版，点击[这里进行下载](https://github.com/hrounder/personal-time-tracker/releases/tag/v0.4.0)。
+
+下面是这个工具原本的源码介绍。
+
+一个面向个人使用的本地周时间记录工具。通过 Excel 式时间表拖动半小时单元格，快速创建、编辑和统计时间记录。
 
 ## 启动
 
-需要已安装 Python 3。Windows 推荐直接双击项目顶层的 `start.bat`。
+**注：** 源码版需要安装 Python 3；如未安装，推荐直接下载上方的软件版启动。
 
-**注：** 将 `start.bat`直接复制到桌面将无法正常启动，可以通过 `右键-发送到-桌面快捷方式`，将启动程序移动到桌面以便于打开
+Windows 用户可以双击项目顶层的 `start.bat` 启动。
 
-`start.bat` 会根据自身位置定位 `src/server.py`，不依赖打开批处理文件时的当前目录；如果启动失败，窗口会保留错误信息。
+请勿将 `start.bat` 直接复制到桌面，否则会因为找不到项目文件而无法启动。可以右键点击 `start.bat`，选择“发送到 → 桌面快捷方式”，通过快捷方式从桌面打开。
 
-也可以在项目根目录手动运行：
+也可以在项目根目录运行：
 
 ```powershell
 python src/server.py
 ```
 
-不需要 `npm install`，不需要安装任何 Python 第三方库，也不需要联网。
+## 项目功能
+
+- 拖动空白时间格创建记录，拖动已有记录块快速复制。
+- 单击已有记录，可编辑事项、分类、时间和备注，或直接删除。
+- 在完整周视图中预览一周 24 小时的时间分布。
+- 显示每日分类时长，以及本周分类时长条形统计图。
+- 自定义分类名称、颜色和排列顺序。
+- 导出规则的 JSON 数据，便于交给 AI 分析或用于其他工具。
+- 可选的彩带反馈特效，开关设置会被保留。
+- 自动阻止记录占用同一时间段，避免重复统计。
 
 ## 项目结构
 
 ```text
 personal-time-tracker/
 ├── README.md
-├── start.bat
-├── src/
+├── start.bat                 # Windows 源码版启动程序
+├── src/                      # 页面与本地服务源码
 │   ├── app.js
 │   ├── index.html
 │   ├── server.py
 │   └── style.css
+├── desktop/                  # Windows 绿色软件构建文件
 ├── tool/
-│   └── weekly-summary/  # 将每周时间块记录整理为按日期汇总的 JSON
-├── config/  # 首次运行时自动创建，不提交到 Git
-└── data/    # 首次运行时自动创建，不提交到 Git
+│   └── weekly-summary/       # 每周数据整理工具
+├── config/                   # 分类与用户设置
+├── data/                     # 每周时间记录
+└── backups/                  # 本地备份
 ```
-
-## 界面功能
-
-- 顶部“彩带特效”默认关闭；手动打开或关闭后会记住你的选择。
-- 右上角“整体情况”可在一个屏幕内查看当前周完整 24 小时分布。
-- 点击右上角关闭按钮、按 Esc 或点击遮罩区域均可退出总览。
-- 右上角“导出数据”会把全部周记录导出为一个规则的 JSON 文件，便于交给 AI 分析。
-- 时间表下方会按分类显示当前周的实际统计时长条形图；伤停补时会计入统计。
-- 单击已有时间块可以修改事项、分类、伤停补时和备注，也可以使用红色“删除”按钮移除记录。
-- 如果记录完全重叠，先编辑或删除最上层记录，下面的记录随后会显示出来。
-- 新建记录选择“睡觉”分类时，事项会自动填写“睡觉”；手动修改后的事项不会被分类切换覆盖。
-
-## 彩带消失时间
-
-- 打开 `src/app.js`，修改文件开头的 `CONFETTI_FADE_MS`。
-- near、medium、far 分别控制近、中、远三组彩带，单位是毫秒。
-- 数值越小越早消失，建议先在 500–1800 之间尝试。
-- 如果消失时间大于原飞行时间，飞行会同步延长，彩带不会停住后再消失。
-
-## 首次启动与数据文件
-
-第一次执行 `python src/server.py` 时：
-
-- 自动创建项目顶层的 `data/` 和 `config/` 文件夹；
-- 自动创建 `config/categories.json`；
-- `config/preferences.json` 会在用户首次更改偏好设置时写入；
-- 每周记录文件会在该周第一次保存记录时创建。
-
-- `config/categories.json`：分类名称、分类颜色和可选颜色，跨周共用；
-- `config/preferences.json`：彩带等用户偏好；
-- `data/time-entries-YYYY-MM-DD.json`：一周的时间记录，日期是该周周一。
-
-旧版本的 `data/categories.json` 会保留作为迁移备份；程序启动时会将它复制到 `config/categories.json`，之后分类配置与每周记录分别保存在不同文件夹。
-
-例如某周周一为 2026 年 8 月 17 日，该周记录会保存在：
-
-```text
-data/time-entries-2026-08-17.json
-```
-
-如需完整备份，请同时复制 config 和 data 两个文件夹。
 
 ## 数据整理工具
 
-项目提供了一个无需第三方依赖的每周汇总工具。每个有记录的星期生成一个文件，文件内按日期和分类整理记录，并合并同一分类下名称相同的事项：
+`tool/weekly-summary/` 可以将每周的时间块记录整理为按日期、分类和事项汇总的 JSON；同一分类下名称相同的事项会合并统计。
 
 ```powershell
 python tool/weekly-summary/summarize_by_week.py
 ```
 
-结果保存在 `data/weekly-summary/`。具体格式和参数见 [`tool/weekly-summary/README.md`](tool/weekly-summary/README.md)。
+结果保存在 `data/weekly-summary/`，具体格式和参数见 [`tool/weekly-summary/README.md`](tool/weekly-summary/README.md)。
 
 ## 注意
 
-- 不要直接双击 `src/index.html`；请通过顶层 `start.bat` 或 `python src/server.py` 启动，否则网页无法写入 JSON 文件。
+- 不要直接双击 `src/index.html`，否则页面无法将记录写入本地 JSON 文件。
 - 服务只监听 `127.0.0.1`，其他电脑无法访问。
 - 不要在工具运行时手动编辑正在使用的数据文件。
-
-## 隐私与版本控制
-
-- `data/`、`config/` 和 `backups/` 已加入 `.gitignore`，个人记录与配置不会被提交到 GitHub。
-- 仓库公开前，请根据你的开源计划补充合适的 LICENSE 文件。
+- `data/`、`config/` 和 `backups/` 不会提交到 GitHub，个人记录与配置保存在本机。
