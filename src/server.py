@@ -16,16 +16,20 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 
-WEB_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = WEB_DIR.parent
+IS_FROZEN = bool(getattr(sys, "frozen", False))
+BUNDLE_ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+WEB_DIR = BUNDLE_ROOT / "src" if IS_FROZEN else Path(__file__).resolve().parent
+PROJECT_ROOT = Path(sys.executable).resolve().parent if IS_FROZEN else WEB_DIR.parent
 DATA_DIR = PROJECT_ROOT / "data"
 CONFIG_DIR = PROJECT_ROOT / "config"
+BACKUPS_DIR = PROJECT_ROOT / "backups"
 CATEGORIES_FILE = CONFIG_DIR / "categories.json"
 PREFERENCES_FILE = CONFIG_DIR / "preferences.json"
 LEGACY_CATEGORIES_FILE = DATA_DIR / "categories.json"
 WEEK_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 COLOR_PATTERN = re.compile(r"^#[0-9A-Fa-f]{6}$")
 MAX_BODY_SIZE = 2 * 1024 * 1024
+UNCATEGORIZED_CATEGORY = "__PTT_UNCATEGORIZED__"
 BASE_COLORS = [
     "#DCEBFA", "#DCEFEA", "#E2F1D5", "#FFF2C6",
     "#FBE4C8", "#F8D9D2", "#EADCF3",
@@ -39,6 +43,18 @@ DEFAULT_CATEGORIES = {
     ],
 }
 DEFAULT_PREFERENCES = {"confettiEnabled": False}
+
+
+def ensure_storage() -> None:
+    """Create writable folders beside the source tree or packaged executable."""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+    if not CATEGORIES_FILE.exists():
+        if LEGACY_CATEGORIES_FILE.exists():
+            shutil.copy2(LEGACY_CATEGORIES_FILE, CATEGORIES_FILE)
+        else:
+            atomic_write_json(CATEGORIES_FILE, DEFAULT_CATEGORIES)
 
 
 def open_browser(url: str) -> None:
@@ -93,12 +109,15 @@ def validate_categories(payload: object) -> dict:
             raise ValueError("分类项目格式错误")
         name = str(item.get("name", "")).strip()
         color = str(item.get("color", "")).upper()
-        if not name or len(name) > 16 or name in names:
+        if not name or len(name) > 16 or name in names or name == UNCATEGORIZED_CATEGORY:
             raise ValueError("分类名称为空、重复或过长")
         if not COLOR_PATTERN.fullmatch(color):
             raise ValueError("分类颜色格式错误")
         names.add(name)
         cleaned_categories.append({"name": name, "color": color})
+
+    if not cleaned_categories:
+        raise ValueError("至少保留一个分类")
 
     cleaned_colors = []
     for color in [*BASE_COLORS, *colors]:
@@ -123,7 +142,15 @@ def validate_entries(payload: object) -> list:
     for item in payload:
         if not isinstance(item, dict) or not all(key in item for key in required):
             raise ValueError("时间记录格式错误")
-        cleaned.append({key: item[key] for key in required})
+        try:
+            focus_level = int(item.get("focusLevel", 0))
+        except (TypeError, ValueError) as error:
+            raise ValueError("重点事项色块格式错误") from error
+        if focus_level not in (0, 1, 2, 3):
+            raise ValueError("重点事项色块格式错误")
+        cleaned_item = {key: item[key] for key in required}
+        cleaned_item["focusLevel"] = focus_level
+        cleaned.append(cleaned_item)
     return cleaned
 
 
@@ -141,6 +168,19 @@ def migrate_category_name(old_name: str, new_name: str) -> None:
                 changed = True
         if changed:
             atomic_write_json(path, entries)
+
+
+def category_usage_count(name: str) -> int:
+    count = 0
+    for path in DATA_DIR.glob("time-entries-*.json"):
+        entries = read_json(path, [])
+        if not isinstance(entries, list):
+            continue
+        count += sum(
+            1 for entry in entries
+            if isinstance(entry, dict) and entry.get("category") == name
+        )
+    return count
 
 
 def time_to_minutes(value: object) -> int:
@@ -197,6 +237,7 @@ def build_export() -> dict:
                 "activity": str(entry.get("activity", "")),
                 "category": str(entry.get("category", "")),
                 "note": str(entry.get("note", "")),
+                "focusLevel": int(entry.get("focusLevel", 0)) if str(entry.get("focusLevel", 0)) in {"0", "1", "2", "3"} else 0,
             })
 
     records.sort(key=lambda item: (item["date"], item["startTime"], item["id"]))
@@ -242,6 +283,13 @@ class Handler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/preferences":
             self.send_json(read_json(PREFERENCES_FILE, DEFAULT_PREFERENCES))
             return
+        if parsed.path == "/api/category-usage":
+            name = parse_qs(parsed.query).get("name", [""])[0].strip()
+            if not name:
+                self.send_error_json(HTTPStatus.BAD_REQUEST, "分类名称不能为空")
+                return
+            self.send_json({"name": name, "count": category_usage_count(name)})
+            return
         if parsed.path == "/api/export":
             self.send_json_download(
                 build_export(),
@@ -270,9 +318,16 @@ class Handler(SimpleHTTPRequestHandler):
             if parsed.path == "/api/categories":
                 cleaned = validate_categories(payload)
                 rename = payload.get("rename") if isinstance(payload, dict) else None
+                delete_value = payload.get("delete") if isinstance(payload, dict) else None
+                deleted_name = delete_value.strip() if isinstance(delete_value, str) else ""
+                if deleted_name:
+                    if any(item["name"] == deleted_name for item in cleaned["categories"]):
+                        raise ValueError("待删除的分类仍在分类列表中")
                 atomic_write_json(CATEGORIES_FILE, cleaned)
                 if isinstance(rename, dict):
                     migrate_category_name(str(rename.get("from", "")), str(rename.get("to", "")))
+                if deleted_name:
+                    migrate_category_name(deleted_name, UNCATEGORIZED_CATEGORY)
                 self.send_json(cleaned)
                 return
             if parsed.path == "/api/preferences":
@@ -326,13 +381,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def main() -> None:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    if not CATEGORIES_FILE.exists():
-        if LEGACY_CATEGORIES_FILE.exists():
-            shutil.copy2(LEGACY_CATEGORIES_FILE, CATEGORIES_FILE)
-        else:
-            atomic_write_json(CATEGORIES_FILE, DEFAULT_CATEGORIES)
+    ensure_storage()
 
     try:
         server = ThreadingHTTPServer(("127.0.0.1", 8765), Handler)

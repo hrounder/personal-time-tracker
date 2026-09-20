@@ -1,6 +1,6 @@
 # 个人时间记录工具
 
-> 【置顶】2026.8.20：我们发布了这个工具的软件版，点击[这里进行下载](https://github.com/hrounder/personal-time-tracker/releases/tag/v0.4.0)。
+> 【置顶】2026.9.20：软件版已更新至 v0.5.0，点击[这里进行下载](https://github.com/hrounder/personal-time-tracker/releases/tag/v0.5.0)。
 
 下面是这个工具原本的源码介绍。
 

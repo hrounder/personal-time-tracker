@@ -10,6 +10,9 @@
   const WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
   const SLOT_COUNT = 48;
   const SLOT_HEIGHT = 30;
+  const UNCATEGORIZED_CATEGORY = "__PTT_UNCATEGORIZED__";
+  const UNCATEGORIZED_LABEL = "未分类";
+  const UNCATEGORIZED_COLOR = "#D9DEDB";
 
   // 彩带消失时间（毫秒）：数值越小，彩带越早消失；建议在 500–1800 之间调整。
   const CONFETTI_FADE_MS = {
@@ -35,6 +38,8 @@
     suppressEntryClickUntil: 0,
     categoryReorderDrag: null,
     suppressCategoryClickUntil: 0,
+    popoverDrag: null,
+    pendingCategoryDeletion: null,
   };
 
   async function api(path, options) {
@@ -62,10 +67,10 @@
     });
   }
 
-  async function saveCategories(rename = null) {
+  async function saveCategories(rename = null, deletedName = null) {
     await api("/api/categories", {
       method: "PUT",
-      body: JSON.stringify({ categories: state.categories, colors: state.colors, rename }),
+      body: JSON.stringify({ categories: state.categories, colors: state.colors, rename, delete: deletedName }),
     });
   }
 
@@ -128,7 +133,17 @@
     return slotCount >= 2 ? `${startTime}–${endTime}（${compactDurationLabel(slotCount)}）` : "";
   }
   function categoryColor(name) {
-    return state.categories.find((item) => item.name === name)?.color || "#E8EBEF";
+    return state.categories.find((item) => item.name === name)?.color || UNCATEGORIZED_COLOR;
+  }
+  function categoryLabel(name) {
+    return state.categories.some((item) => item.name === name) ? name : UNCATEGORIZED_LABEL;
+  }
+  function normalizedEntryCategory(name) {
+    return state.categories.some((item) => item.name === name) ? name : UNCATEGORIZED_CATEGORY;
+  }
+  function focusLevel(value) {
+    const level = Number(value);
+    return Number.isInteger(level) && level >= 1 && level <= 3 ? level : 0;
   }
   function escapeHtml(value) {
     return String(value).replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[char]);
@@ -212,6 +227,7 @@
       date,
       startTime: slotToTime(startSlot),
       endTime: slotToTime(startSlot + slotCount),
+      focusLevel: 0,
     };
   }
 
@@ -233,7 +249,9 @@
 
   function renderStats() {
     const totals = new Map();
+    const visibleCategories = new Set(state.categories.map((category) => category.name));
     state.entries.forEach((entry) => {
+      if (!visibleCategories.has(entry.category)) return;
       totals.set(entry.category, (totals.get(entry.category) || 0) + entryActualMinutes(entry));
     });
 
@@ -267,13 +285,17 @@
   function renderDailyStats(days) {
     const today = isoDate(new Date());
     const dayIndexes = new Map(days.map((date, index) => [isoDate(date), index]));
-    const totals = new Map(state.categories.map((category) => [category.name, Array(7).fill(0)]));
+    const totals = new Map(state.categories.map((category) => [
+      category.name,
+      Array.from({ length: 7 }, () => ({ minutes: 0, focus: 0 })),
+    ]));
 
     state.entries.forEach((entry) => {
       const dayIndex = dayIndexes.get(entry.date);
       const categoryTotals = totals.get(entry.category);
       if (dayIndex === undefined || !categoryTotals) return;
-      categoryTotals[dayIndex] += entryActualMinutes(entry);
+      categoryTotals[dayIndex].minutes += entryActualMinutes(entry);
+      categoryTotals[dayIndex].focus = Math.max(categoryTotals[dayIndex].focus, focusLevel(entry.focusLevel));
     });
 
     let html = '<div class="daily-stats" role="table" aria-label="每日分类统计">';
@@ -285,16 +307,54 @@
 
     state.categories.forEach((category) => {
       const categoryTotals = totals.get(category.name);
-      html += `<div class="daily-category-label" role="rowheader" title="${escapeHtml(category.name)}"><i style="background:${category.color}"></i><span>${escapeHtml(category.name)}</span></div>`;
+      const rowHasFocus = categoryTotals.some((cell) => cell.focus > 0);
+      html += `<div class="daily-category-label ${rowHasFocus ? "has-focus" : ""}" role="rowheader" title="${escapeHtml(category.name)}"><i style="background:${category.color}"></i><span>${escapeHtml(category.name)}</span></div>`;
       days.forEach((date, day) => {
-        const minutes = categoryTotals[day];
+        const { minutes, focus } = categoryTotals[day];
         const dateString = isoDate(date);
-        html += `<div class="daily-stat-value ${dateString === today ? "is-today" : ""} ${minutes ? "has-time" : "is-empty"}" role="cell" aria-label="${escapeHtml(category.name)}，${WEEKDAYS[day]}：${durationLabel(minutes)}">${minutes ? durationLabel(minutes) : "—"}</div>`;
+        const focusClass = focus ? `focus-${focus}` : "";
+        const interactionHint = minutes ? "；单击切换重点色块" : "";
+        html += `<button type="button" class="daily-stat-value ${dateString === today ? "is-today" : ""} ${minutes ? "has-time" : "is-empty"} ${rowHasFocus ? "row-has-focus" : ""} ${focusClass}" role="cell" data-date="${dateString}" data-category="${escapeHtml(category.name)}" data-focus="${focus}" ${minutes ? "" : "disabled"} aria-label="${escapeHtml(category.name)}，${WEEKDAYS[day]}：${durationLabel(minutes)}${interactionHint}">${minutes ? durationLabel(minutes) : "—"}</button>`;
       });
     });
 
     html += "</div>";
+    const focusTotals = [0, 0, 0, 0];
+    totals.forEach((cells) => cells.forEach((cell) => {
+      if (cell.focus) focusTotals[cell.focus] += cell.minutes;
+    }));
+    const focusSummaryItems = [1, 2, 3]
+      .filter((level) => focusTotals[level] > 0)
+      .map((level) => `<span aria-label="重点颜色 ${level}：${durationLabel(focusTotals[level])}"><i class="focus-${level}"></i>${durationLabel(focusTotals[level])}</span>`)
+      .join("");
+    if (focusSummaryItems) {
+      html += `<div class="daily-focus-summary" aria-label="重点事项统计">
+        <strong>重点统计</strong>
+        ${focusSummaryItems}
+      </div>`;
+    }
     return html;
+  }
+
+  async function cycleDailyFocus(event) {
+    const cell = event.currentTarget;
+    const date = cell.dataset.date;
+    const category = cell.dataset.category;
+    const nextFocus = (focusLevel(cell.dataset.focus) + 1) % 4;
+    const previousEntries = state.entries;
+    state.entries = state.entries.map((entry) => (
+      entry.date === date && entry.category === category
+        ? { ...entry, focusLevel: nextFocus }
+        : entry
+    ));
+    renderSheet();
+    try {
+      await saveWeek();
+    } catch (error) {
+      state.entries = previousEntries;
+      renderSheet();
+      toast(error.message);
+    }
   }
 
   function renderSheet() {
@@ -329,7 +389,7 @@
         const slotCount = Math.max(end - start, 1);
         const timeLabel = entryTimeLabel(entry.startTime, entry.endTime, slotCount);
         const adjustment = slotCount >= 2 && entry.timeAdjustment ? `<em>${entry.timeAdjustment > 0 ? "+" : ""}${entry.timeAdjustment} 分钟</em>` : "";
-        const entryDescription = `${entry.activity} · ${entry.startTime}–${entry.endTime} · ${entry.category}`;
+        const entryDescription = `${entry.activity} · ${entry.startTime}–${entry.endTime} · ${categoryLabel(entry.category)}`;
         html += `<article class="entry-block ${slotCount === 1 ? "is-single-slot" : "is-multi-slot"}" data-entry-id="${escapeHtml(entry.id)}" role="button" tabindex="0" aria-label="编辑记录：${escapeHtml(entryDescription)}" style="top:${start * SLOT_HEIGHT + 1}px;height:${Math.max(slotCount * SLOT_HEIGHT - 2, 28)}px;background-color:${categoryColor(entry.category)}" title="单击编辑 · 拖动复制 · ${escapeHtml(entryDescription)}"><strong>${escapeHtml(entry.activity)}</strong>${timeLabel ? `<span>${timeLabel}</span>` : ""}${adjustment}</article>`;
       });
       html += "</div>";
@@ -353,6 +413,9 @@
         event.preventDefault();
         openEntryEditor(block.dataset.entryId, event);
       });
+    });
+    sheet.querySelectorAll(".daily-stat-value.has-time").forEach((cell) => {
+      cell.addEventListener("click", cycleDailyFocus);
     });
     renderStats();
   }
@@ -409,6 +472,73 @@
 
   function clamp(value, minimum, maximum) {
     return Math.min(Math.max(value, minimum), maximum);
+  }
+
+  function beginPopoverDrag(event) {
+    if (event.button !== 0 || state.popoverDrag || event.target.closest("button")) return;
+    const popover = $("#entry-popover");
+    if (popover.hidden) return;
+    const rect = popover.getBoundingClientRect();
+    state.popoverDrag = {
+      pointerId: event.pointerId,
+      handle: event.currentTarget,
+      startX: event.clientX,
+      startY: event.clientY,
+      latestX: event.clientX,
+      latestY: event.clientY,
+      startLeft: rect.left,
+      startTop: rect.top,
+      targetLeft: rect.left,
+      targetTop: rect.top,
+      frame: 0,
+    };
+    popover.classList.add("is-dragging");
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  }
+
+  function updatePopoverDrag(drag) {
+    drag.frame = 0;
+    const popover = $("#entry-popover");
+    const maximumLeft = Math.max(8, window.innerWidth - popover.offsetWidth - 8);
+    const maximumTop = Math.max(8, window.innerHeight - popover.offsetHeight - 8);
+    drag.targetLeft = clamp(drag.startLeft + drag.latestX - drag.startX, 8, maximumLeft);
+    drag.targetTop = clamp(drag.startTop + drag.latestY - drag.startY, 8, maximumTop);
+    popover.style.transform = `translate3d(${drag.targetLeft - drag.startLeft}px, ${drag.targetTop - drag.startTop}px, 0)`;
+  }
+
+  function movePopoverDrag(event) {
+    const drag = state.popoverDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    drag.latestX = event.clientX;
+    drag.latestY = event.clientY;
+    event.preventDefault();
+    if (!drag.frame) drag.frame = requestAnimationFrame(() => updatePopoverDrag(drag));
+  }
+
+  function finishPopoverDrag(event) {
+    const drag = state.popoverDrag;
+    if (!drag || (event && drag.pointerId !== event.pointerId)) return;
+    if (drag.frame) cancelAnimationFrame(drag.frame);
+    updatePopoverDrag(drag);
+    const popover = $("#entry-popover");
+    popover.style.left = `${drag.targetLeft}px`;
+    popover.style.top = `${drag.targetTop}px`;
+    popover.style.transform = "";
+    popover.classList.remove("is-dragging");
+    try { drag.handle.releasePointerCapture?.(drag.pointerId); } catch { /* Pointer capture may already be released. */ }
+    state.popoverDrag = null;
+  }
+
+  function cancelPopoverDrag() {
+    const drag = state.popoverDrag;
+    if (!drag) return;
+    if (drag.frame) cancelAnimationFrame(drag.frame);
+    const popover = $("#entry-popover");
+    popover.style.transform = "";
+    popover.classList.remove("is-dragging");
+    try { drag.handle.releasePointerCapture?.(drag.pointerId); } catch { /* Pointer capture may already be released. */ }
+    state.popoverDrag = null;
   }
 
   function beginEntryCopy(event) {
@@ -656,8 +786,8 @@
     state.activityAutoFilled = false;
     $("#adjustment").value = String(Number(entry.timeAdjustment) || 0);
     $("#note").value = entry.note || "";
-    renderEntryCategories();
-    $("#entry-category").value = entry.category;
+    renderEntryCategories(entry.category);
+    $("#entry-category").value = normalizedEntryCategory(entry.category);
     $("#delete-entry").hidden = false;
     $("#save-entry").textContent = "保存修改";
     $(".form-actions").classList.add("is-editing");
@@ -674,6 +804,7 @@
   }
 
   function closeEntry(clearSelection = true) {
+    cancelPopoverDrag();
     $("#entry-popover").hidden = true;
     state.dragAnchor = null;
     state.editingEntryId = null;
@@ -687,8 +818,11 @@
     }
   }
 
-  function renderEntryCategories() {
-    $("#entry-category").innerHTML = state.categories.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`).join("");
+  function renderEntryCategories(currentCategory = null) {
+    const uncategorizedOption = currentCategory && !state.categories.some((item) => item.name === currentCategory)
+      ? `<option value="${UNCATEGORIZED_CATEGORY}">${UNCATEGORIZED_LABEL}（原分类已删除）</option>`
+      : "";
+    $("#entry-category").innerHTML = uncategorizedOption + state.categories.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)}</option>`).join("");
   }
 
   function applyCategoryActivityDefault(force = false) {
@@ -730,6 +864,7 @@
       category,
       timeAdjustment: Number($("#adjustment").value) || 0,
       note: $("#note").value.trim(),
+      focusLevel: originalEntry?.category === category ? focusLevel(originalEntry.focusLevel) : 0,
     };
     if (editingIndex >= 0) state.entries[editingIndex] = updatedEntry;
     else state.entries.push(updatedEntry);
@@ -926,6 +1061,7 @@
     $("#category-name-label").textContent = "分类名称";
     $("#save-category").textContent = "保存修改";
     $("#save-category").disabled = false;
+    $("#delete-category").hidden = false;
     $("#cancel-category").hidden = false;
     $("#custom-color-row").hidden = true;
     renderCategories();
@@ -938,6 +1074,7 @@
     $("#category-name-label").textContent = "新分类";
     $("#save-category").textContent = "添加分类";
     $("#save-category").disabled = true;
+    $("#delete-category").hidden = true;
     $("#cancel-category").hidden = true;
     $("#custom-color-row").hidden = true;
     $("#color-error").textContent = "";
@@ -948,6 +1085,10 @@
     event.preventDefault();
     const name = $("#category-name").value.trim();
     if (!name) return;
+    if (name === UNCATEGORIZED_CATEGORY) {
+      toast("该名称由系统保留");
+      return;
+    }
     if (state.categories.some((item) => item.name === name && item.name !== state.editingCategory)) {
       toast("分类名称已存在。");
       return;
@@ -972,6 +1113,58 @@
     } catch (error) {
       toast(error.message);
       await initialize();
+    }
+  }
+
+  function openCategoryDeleteDialog(name, usageCount) {
+    state.pendingCategoryDeletion = name;
+    $("#category-delete-message").textContent = `“${name}”仍关联 ${usageCount} 条记录。删除后，这些记录会保留并显示为灰色“${UNCATEGORIZED_LABEL}”，且不再进入每日和本周统计。`;
+    $("#category-delete-modal").hidden = false;
+    $("#cancel-category-delete").focus();
+  }
+
+  function closeCategoryDeleteDialog() {
+    $("#category-delete-modal").hidden = true;
+    state.pendingCategoryDeletion = null;
+    if (!$("#delete-category").hidden) $("#delete-category").focus();
+  }
+
+  async function performCategoryDeletion(name) {
+    if (!name) return;
+    const previousCategories = state.categories;
+    const previousEntries = state.entries;
+    state.categories = state.categories.filter((item) => item.name !== name);
+    state.entries = state.entries.map((entry) => (
+      entry.category === name ? { ...entry, category: UNCATEGORIZED_CATEGORY, focusLevel: 0 } : entry
+    ));
+    try {
+      await saveCategories(null, name);
+      closeEntry(false);
+      closeCategoryDeleteDialog();
+      resetCategoryForm();
+      renderSheet();
+    } catch (error) {
+      state.categories = previousCategories;
+      state.entries = previousEntries;
+      renderCategories();
+      renderSheet();
+      toast(error.message);
+    }
+  }
+
+  async function deleteCategory() {
+    const name = state.editingCategory;
+    if (!name) return;
+    if (state.categories.length <= 1) {
+      toast("至少保留一个分类");
+      return;
+    }
+    try {
+      const usage = await api(`/api/category-usage?name=${encodeURIComponent(name)}`);
+      if (Number(usage.count) > 0) openCategoryDeleteDialog(name, Number(usage.count));
+      else await performCategoryDeletion(name);
+    } catch (error) {
+      toast(error.message);
     }
   }
 
@@ -1035,6 +1228,21 @@
   $("#plus-adjustment").addEventListener("click", () => { $("#adjustment").value = String((Number($("#adjustment").value) || 0) + 5); updateActualDuration(); });
   $("#category-name").addEventListener("input", () => { $("#save-category").disabled = !$("#category-name").value.trim(); });
   $("#category-form").addEventListener("submit", saveCategory);
+  $("#delete-category").addEventListener("click", deleteCategory);
+  $("#cancel-category-delete").addEventListener("click", closeCategoryDeleteDialog);
+  $("#confirm-category-delete").addEventListener("click", async (event) => {
+    const name = state.pendingCategoryDeletion;
+    if (!name) return;
+    event.currentTarget.disabled = true;
+    try {
+      await performCategoryDeletion(name);
+    } finally {
+      event.currentTarget.disabled = false;
+    }
+  });
+  $("#category-delete-modal").addEventListener("click", (event) => {
+    if (event.target === event.currentTarget) closeCategoryDeleteDialog();
+  });
   $("#cancel-category").addEventListener("click", resetCategoryForm);
   $("#add-custom-color").addEventListener("click", addCustomColor);
   $("#custom-color").addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); addCustomColor(); } });
@@ -1042,7 +1250,15 @@
   $("#confetti-toggle").addEventListener("change", updateConfettiPreference);
   $("#close-overview").addEventListener("click", closeOverview);
   $("#overview-modal").addEventListener("click", (event) => { if (event.target === event.currentTarget) closeOverview(); });
-  document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !$("#overview-modal").hidden) closeOverview(); });
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (!$("#category-delete-modal").hidden) closeCategoryDeleteDialog();
+    else if (!$("#overview-modal").hidden) closeOverview();
+  });
+  $(".popover-head").addEventListener("pointerdown", beginPopoverDrag);
+  document.addEventListener("pointermove", movePopoverDrag);
+  document.addEventListener("pointerup", finishPopoverDrag);
+  document.addEventListener("pointercancel", cancelPopoverDrag);
   document.addEventListener("pointermove", moveEntryCopy);
   document.addEventListener("pointerup", finishEntryCopy);
   document.addEventListener("pointercancel", cancelEntryCopy);

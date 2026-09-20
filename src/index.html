@@ -49,7 +49,7 @@
     <section class="category-section">
       <div class="section-copy">
         <h2>分类设置</h2>
-        <p>点击已有分类可以修改名称或颜色。</p>
+        <p>点击已有分类可以修改或删除，拖动可以调整顺序。</p>
       </div>
       <div class="category-content">
         <div class="category-list" id="category-list" aria-label="已有分类"></div>
@@ -60,6 +60,7 @@
             <div class="swatches" id="swatches"></div>
           </fieldset>
           <div class="category-actions">
+            <button class="category-delete-button" id="delete-category" type="button" hidden>删除</button>
             <button class="category-cancel-button" id="cancel-category" type="button" hidden>取消</button>
             <button class="add-button" id="save-category" type="submit" disabled>添加分类</button>
           </div>
@@ -76,7 +77,7 @@
   </main>
 
   <div class="popover" id="entry-popover" role="dialog" aria-modal="true" aria-labelledby="entry-title" hidden>
-    <div class="popover-head">
+    <div class="popover-head" title="拖动此处移动窗口">
       <div><span id="entry-date"></span><h2 id="entry-title"></h2></div>
       <button id="close-entry" type="button" aria-label="关闭">×</button>
     </div>
@@ -104,6 +105,18 @@
     <section class="overview-panel">
       <button class="overview-close" id="close-overview" type="button" aria-label="关闭整体情况">×</button>
       <div class="overview-grid" id="overview-grid"></div>
+    </section>
+  </div>
+
+  <div class="confirm-overlay" id="category-delete-modal" role="dialog" aria-modal="true" aria-labelledby="category-delete-title" hidden>
+    <section class="confirm-panel">
+      <span>删除分类</span>
+      <h2 id="category-delete-title">这个分类仍被历史记录使用</h2>
+      <p id="category-delete-message"></p>
+      <div class="confirm-actions">
+        <button class="cancel-button" id="cancel-category-delete" type="button">取消</button>
+        <button class="confirm-delete-button" id="confirm-category-delete" type="button">仍然删除</button>
+      </div>
     </section>
   </div>
 </body>

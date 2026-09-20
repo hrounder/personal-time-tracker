@@ -13,3 +13,7 @@ __pycache__/
 .idea/
 Thumbs.db
 .DS_Store
+
+# Desktop build output
+.build-desktop/
+release/
