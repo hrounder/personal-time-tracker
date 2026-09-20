@@ -14,7 +14,9 @@
 
 拖动时间方块，快速新建一条记录：
 
-![拖动时间方块新建记录](assets/demo-create-event.gif)
+<p align="center">
+  <img src="assets/demo-create-event.gif" alt="拖动时间方块新建记录" width="540">
+</p>
 
 ## 启动
 
