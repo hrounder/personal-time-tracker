@@ -3,6 +3,7 @@
 [![最新版本](https://img.shields.io/github/v/release/hrounder/personal-time-tracker?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC)](https://github.com/hrounder/personal-time-tracker/releases/latest)
 ![Windows](https://img.shields.io/badge/Windows-%E7%BB%BF%E8%89%B2%E7%89%88-4C8C73)
 ![Local first](https://img.shields.io/badge/data-local--first-4C8C73)
+[![License: MIT](https://img.shields.io/badge/license-MIT-4C8C73)](LICENSE)
 
 一款本地优先的个人周时间记录工具。像使用 Excel 表格一样，在一周视图中拖动半小时方块记录活动，并查看每日、每周统计；数据保存在自己的电脑上，也可以导出为适合 AI 分析的结构化 JSON。
 
@@ -84,3 +85,7 @@ python tool/weekly-summary/summarize_by_week.py
 - 服务只监听 `127.0.0.1`，其他电脑无法访问。
 - 不要在工具运行时手动编辑正在使用的数据文件。
 - `data/`、`config/` 和 `backups/` 不会提交到 GitHub，个人记录与配置保存在本机。
+
+## 开源许可
+
+本项目采用 [MIT License](LICENSE)。你可以自由使用、修改、分发或用于商业用途，但需要保留原版权与许可声明。
