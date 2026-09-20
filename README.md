@@ -9,7 +9,7 @@
 
 **Personal Time Tracker** is a local-first, offline weekly time-tracking app with an Excel-style grid. Drag 30-minute time blocks to log activities, review daily and weekly statistics, organize records by category, and export structured JSON for AI analysis. A portable Windows app is available.
 
-> 【置顶】2026.9.20：软件版已更新至 v0.5.0，点击[下载 Windows 绿色版](https://github.com/hrounder/personal-time-tracker/releases/tag/v0.5.0)。
+> 【置顶】2026.9.20：软件版已更新至 v0.4.0，点击[下载 Windows 绿色版](https://github.com/hrounder/personal-time-tracker/releases/tag/v0.4.0)。
 
 ## 功能演示
 
